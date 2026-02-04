@@ -58,7 +58,7 @@ export function CoresComparison() {
     }));
 
     const divergenciasSFData = results.divergencias.map(d => {
-      const idDispositivoCor = `DIS-${d.ProductCode_Modelo}-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.ProductCode_Cor}`;
+      const idDispositivoCor = `DIS-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.ProductCode_Cor}`;
 
       return {
         'IRIS_Dispositvo__c': d.IRIS_Dispositvo_Id,

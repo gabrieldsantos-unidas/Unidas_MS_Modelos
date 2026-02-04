@@ -58,7 +58,7 @@ export function OpcionaisComparison() {
     }));
 
     const divergenciasSFData = results.divergencias.map(d => {
-      const idDispositivoOpcional = `DIS-${d.ProductCode_Modelo}-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.ProductCode_Opcional}`;
+      const idDispositivoOpcional = `DIS-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.ProductCode_Opcional}`;
 
       return {
         'IRIS_Dispositivo__c': d.IRIS_Dispositivo_Id,
