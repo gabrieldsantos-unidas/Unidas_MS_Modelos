@@ -1,13 +1,17 @@
 import { useState } from 'react';
-import { FileSpreadsheet, Car, Palette, Package } from 'lucide-react';
+import { FileSpreadsheet, Car, Palette, Package, Database } from 'lucide-react';
 import { ModelosComparison } from './components/ModelosComparison';
 import { OpcionaisComparison } from './components/OpcionaisComparison';
 import { CoresComparison } from './components/CoresComparison';
+import { FileUpload } from './components/FileUpload';
 
 type TabType = 'modelos' | 'opcionais' | 'cores';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('modelos');
+
+  // NOVO: Base de IDs global (seleciona uma vez)
+  const [baseIdsFile, setBaseIdsFile] = useState<File | null>(null);
 
   const tabs = [
     { id: 'modelos' as TabType, label: 'Modelos', icon: Car },
@@ -28,6 +32,25 @@ function App() {
           <p className="text-gray-600 max-w-2xl mx-auto">
             Compare dados entre Locavia e Salesforce, identifique divergências e gere relatórios detalhados
           </p>
+        </div>
+
+        {/* NOVO: Carregamento global da Base de IDs */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Database className="w-5 h-5 text-slate-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Base de IDs (Product2)</h2>
+          </div>
+
+          <p className="text-sm text-gray-600 mb-4">
+            Planilha usada para buscar IDs de Dispositivo, Cor e Opcional (IRIS_TipoRegistro__c: IRIS_Dispositivo, IRIS_Cores, IRIS_Opicionais).
+            Necessária para exportar corretamente os campos IRIS_Dispositivo__c e IRIS_Cor__c/IRIS_Opcional__c.
+          </p>
+
+          <FileUpload
+            label="Planilha Base (IDs de Dispositivos / Cores / Opcionais)"
+            onFileSelect={setBaseIdsFile as any}
+            selectedFile={baseIdsFile}
+          />
         </div>
 
         <div className="bg-white rounded-xl shadow-lg mb-8">
@@ -59,8 +82,8 @@ function App() {
         </div>
 
         {activeTab === 'modelos' && <ModelosComparison />}
-        {activeTab === 'opcionais' && <OpcionaisComparison />}
-        {activeTab === 'cores' && <CoresComparison />}
+        {activeTab === 'opcionais' && <OpcionaisComparison baseIdsFile={baseIdsFile} />}
+        {activeTab === 'cores' && <CoresComparison baseIdsFile={baseIdsFile} />}
       </div>
     </div>
   );

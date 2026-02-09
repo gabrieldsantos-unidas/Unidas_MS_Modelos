@@ -11,6 +11,12 @@ const normalizeValue = (value: any): string | number | boolean | null => {
   return value;
 };
 
+const normalizeNameLower = (value: any): string | null => {
+  const v = normalizeValue(value);
+  if (v === null) return null;
+  return String(v).trim().toLowerCase();
+};
+
 const compareValues = (val1: any, val2: any): boolean => {
   const norm1 = normalizeValue(val1);
   const norm2 = normalizeValue(val2);
@@ -55,16 +61,25 @@ export const compareCores = (
       return;
     }
 
-    if (!compareValues(loc.Name, sf.IRIS_Cor_Name)) {
+    // 1) comparação de name com lowercase
+    if (normalizeNameLower(loc.Name) !== normalizeNameLower(sf.IRIS_Cor_Name)) {
       divergencias.push({
         CodigoModelo: loc.CodigoModelo,
         AnoModelo: loc.AnoModelo,
         CorID: loc.IRIS_Cor_ID__c,
+
         ProductCode_Modelo: sf.ProductCode_Modelo,
         IRIS_Dispositvo_Id: sf.IRIS_Dispositvo_Id,
         IRIS_Codigo_do_Modelo_do_Locavia__c: sf.IRIS_Codigo_do_Modelo_do_Locavia__c,
         ProductCode_Cor: sf.ProductCode_Cor,
+
+        SF_Id: sf.Id,
+        IRIS_Cor_RelatedId: sf.IRIS_Cor_RelatedId,
+
+        Locavia_Preco_Publico__c: loc.Preco_Publico__c,
+
         IRIS_Valor__c: sf.IRIS_Valor__c,
+
         Campo_Locavia: 'Name',
         Valor_Locavia: loc.Name,
         Campo_SF: 'IRIS_Cor_Name',
@@ -72,16 +87,25 @@ export const compareCores = (
       });
     }
 
+    // preço continua comparação normal
     if (!compareValues(loc.Preco_Publico__c, sf.IRIS_Valor__c)) {
       divergencias.push({
         CodigoModelo: loc.CodigoModelo,
         AnoModelo: loc.AnoModelo,
         CorID: loc.IRIS_Cor_ID__c,
+
         ProductCode_Modelo: sf.ProductCode_Modelo,
         IRIS_Dispositvo_Id: sf.IRIS_Dispositvo_Id,
         IRIS_Codigo_do_Modelo_do_Locavia__c: sf.IRIS_Codigo_do_Modelo_do_Locavia__c,
         ProductCode_Cor: sf.ProductCode_Cor,
+
+        SF_Id: sf.Id,
+        IRIS_Cor_RelatedId: sf.IRIS_Cor_RelatedId,
+
+        Locavia_Preco_Publico__c: loc.Preco_Publico__c,
+
         IRIS_Valor__c: sf.IRIS_Valor__c,
+
         Campo_Locavia: 'Preco_Publico__c',
         Valor_Locavia: loc.Preco_Publico__c,
         Campo_SF: 'IRIS_Valor__c',

@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FileUpload } from './FileUpload';
 import { InfoPanel } from './InfoPanel';
 import { QueryInfo } from './QueryInfo';
 import { processLocaviaCores, processSalesForceCores } from '../utils/coresProcessor';
 import { compareCores } from '../utils/coresComparison';
+import { processBaseIds } from '../utils/baseIdsProcessor';
+import { buildBaseLookups, BaseLookups, normalizeLookupKey } from '../utils/baseIdsLookup';
 import { AlertCircle, CheckCircle, Download, BarChart3 } from 'lucide-react';
 import type { CoresComparisonResults } from '../types';
 import * as XLSX from 'xlsx';
@@ -12,16 +14,29 @@ const CORES_QUERY = `SELECT Id, CreatedDate, IRIS_Dispositvo__r.Name, IRIS_Dispo
 FROM IRIS_Produto_Cor__c
 ORDER BY CreatedDate DESC`;
 
-export function CoresComparison() {
+type Props = {
+  baseIdsFile: File | null;
+};
+
+export function CoresComparison({ baseIdsFile }: Props) {
   const [locaviaFile, setLocaviaFile] = useState<File | null>(null);
   const [salesForceFile, setSalesForceFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [results, setResults] = useState<CoresComparisonResults | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [lookups, setLookups] = useState<BaseLookups | null>(null);
+
+  const hasBase = useMemo(() => !!baseIdsFile, [baseIdsFile]);
+
   const handleCompare = async () => {
     if (!locaviaFile || !salesForceFile) {
       setError('Por favor, selecione ambos os arquivos antes de comparar.');
+      return;
+    }
+
+    if (!baseIdsFile) {
+      setError('Por favor, selecione também a planilha Base de IDs (Product2).');
       return;
     }
 
@@ -30,6 +45,10 @@ export function CoresComparison() {
     setResults(null);
 
     try {
+      const baseData = await processBaseIds(baseIdsFile);
+      const baseLookups = buildBaseLookups(baseData);
+      setLookups(baseLookups);
+
       const locaviaData = await processLocaviaCores(locaviaFile);
       const salesForceData = await processSalesForceCores(salesForceFile);
 
@@ -43,7 +62,7 @@ export function CoresComparison() {
   };
 
   const handleExport = () => {
-    if (!results) return;
+    if (!results || !lookups) return;
 
     const wb = XLSX.utils.book_new();
 
@@ -57,29 +76,48 @@ export function CoresComparison() {
       'Valor SF': d.Valor_SF,
     }));
 
+    // 2) incluir ID do SF na aba Divergências SF
+    // 3) IRIS_Valor__c deve vir do LOCAVIA (Locavia_Preco_Publico__c)
+    // 4) IRIS_Cor__c deve receber o ID do relacionamento (IRIS_Cor__r.Id) (fallback: Base)
     const divergenciasSFData = results.divergencias.map(d => {
-      const idDispositivoCor = `DIS-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.ProductCode_Cor}`;
+      const dispositivoId = lookups.dispositivoByCodigoModelo.get(String(d.CodigoModelo)) || '';
+
+      const corRelatedId =
+        d.IRIS_Cor_RelatedId ||
+        lookups.corIdByCodigoCorLocavia.get(String(d.CorID)) ||
+        '';
 
       return {
-        'IRIS_Dispositvo__c': d.IRIS_Dispositvo_Id,
+        'Id': d.SF_Id, // ITEM 2
+        'IRIS_Dispositivo__c': dispositivoId || d.IRIS_Dispositvo_Id,
         'IRIS_Ano_Modelo__c': d.AnoModelo,
-        'IRIS_Cor__c': d.ProductCode_Cor,
-        'IRIS_Valor__c': d.IRIS_Valor__c,
-        'IRIS_IdDispositivo_Cor__c': idDispositivoCor,
+        'IRIS_Cor__c': corRelatedId, // ITEM 4
+        'IRIS_Valor__c': d.Locavia_Preco_Publico__c, // ITEM 3 (valor do Locavia)
       };
     });
 
-    const semParSFData = results.semParNoSF.map(r => ({
-      'IRIS_Codigo_Modelo_Locavia_Integracao__c': r.CodigoModelo,
-      'IRIS_Anodomodelo__c': r.AnoModelo,
-      'IRIS_Cor_Name': r.Name,
-      'IRIS_Cor_ID__c': r.IRIS_Cor_ID__c,
-      'IsActive': r.IsActive,
-      'IRIS_Valor__c': r.Preco_Publico__c,
-      'IRIS_Segmento_do_Produto__c': r.IRIS_Segmento_do_Produto__c,
-    }));
+    // 5) Sem par no SF: remover IRIS_Codigo_Modelo... e incluir IRIS_Dispositivo__c e IRIS_Cor__c via base
+    const semParSFData = results.semParNoSF.map(r => {
+      const codigoModeloKey = normalizeLookupKey(r.CodigoModelo);
+      const corKey = normalizeLookupKey(r.IRIS_Cor_ID__c);
+
+      const dispositivoId = lookups.dispositivoByIdLocavia.get(codigoModeloKey) || '';
+      const corRelatedId = lookups.corIdByCodigoCorLocavia.get(corKey) || '';
+
+      return {
+        'IRIS_Dispositivo__c': dispositivoId,
+        'IRIS_Anodomodelo__c': r.AnoModelo,
+        'IRIS_Cor__c': corRelatedId,
+        'IRIS_Cor_Name': r.Name,
+        'IRIS_Cor_ID__c': r.IRIS_Cor_ID__c,
+        'IsActive': r.IsActive,
+        'IRIS_Valor__c': r.Preco_Publico__c,
+        'IRIS_Segmento_do_Produto__c': r.IRIS_Segmento_do_Produto__c,
+      };
+    });
 
     const semParLocaviaData = results.semParNoLocavia.map(r => ({
+      'Id': r.Id,
       'Código Modelo': r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
       'Ano Modelo': r.IRIS_Anodomodelo__c,
       'Nome Cor': r.IRIS_Cor_Name,
@@ -109,7 +147,8 @@ export function CoresComparison() {
             title: "Dados Necessários",
             content: [
               "Planilha Locavia: CodigoModelo, AnoModelo, Name (nome da cor), IRIS_Cor_ID__c, IsActive, Preco_Publico__c, IRIS_Segmento_do_Produto__c",
-              "Planilha Salesforce: IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Anodomodelo__c, IRIS_Cor_Name, IRIS_Cor_ID__c, IRIS_Valor__c",
+              "Planilha Salesforce: (incluindo Id), IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Anodomodelo__c, IRIS_Cor_Name, IRIS_Cor_ID__c, IRIS_Valor__c e (se possível) IRIS_Cor__r.Id",
+              "Planilha Base de IDs: Id, IRIS_TipoRegistro__c (IRIS_Dispositivo/IRIS_Cores/IRIS_Opicionais) e chaves de cruzamento",
               "Arquivos devem estar no formato Excel (.xlsx ou .xls)"
             ]
           },
@@ -119,7 +158,8 @@ export function CoresComparison() {
               "1ª Validação: Verifica se o modelo existe (CodigoModelo + últimos 2 dígitos do AnoModelo)",
               "2ª Validação: Valida o código da cor (IRIS_Cor_ID__c) e cria a chave de comparação",
               "3ª Validação: Compara os valores (Nome da Cor e Preço Público)",
-              "4ª Validação: Se houver duplicatas no Locavia (mesma chave, valores diferentes), considera o registro com maior preço",
+              "Normalização de nome: comparação em lowercase (evita divergência por maiúscula/minúscula)",
+              "4ª Validação: Se houver duplicatas no Locavia, considera o registro com maior preço",
               "Resultado: Identifica cores a INCLUIR no SF e cores a DELETAR do SF"
             ]
           },
@@ -127,31 +167,30 @@ export function CoresComparison() {
             title: "Resultados",
             content: [
               "Divergências: Cores com nomes ou valores diferentes entre Locavia e Salesforce",
-              "Sem par no SF (INCLUIR): Cores cadastradas no Locavia mas não encontradas no Salesforce - devem ser INCLUÍDAS",
-              "Sem par no Locavia (DELETAR): Cores cadastradas no Salesforce mas não encontradas no Locavia - devem ser DELETADAS",
+              "Divergências SF: Aba pronta para update (inclui Id do SF e usa valor do Locavia)",
+              "Sem par no SF (INCLUIR): Cores cadastradas no Locavia mas não encontradas no Salesforce",
+              "Sem par no Locavia (DELETAR): Cores cadastradas no Salesforce mas não encontradas no Locavia",
               "Exportação em Excel para análise e correção de inconsistências"
             ]
           }
         ]}
       />
 
-      <QueryInfo
-        title="Query SQL do Salesforce para Cores"
-        query={CORES_QUERY}
-      />
+      <QueryInfo title="Query SQL do Salesforce para Cores" query={CORES_QUERY} />
 
       <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+        {!hasBase && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-amber-800">
+              Selecione a <b>Base de IDs</b> no topo do sistema antes de comparar.
+            </p>
+          </div>
+        )}
+
         <div className="grid md:grid-cols-2 gap-8 mb-8">
-          <FileUpload
-            label="Planilha Locavia - Cores"
-            onFileSelect={setLocaviaFile}
-            selectedFile={locaviaFile}
-          />
-          <FileUpload
-            label="Planilha Salesforce - Cores"
-            onFileSelect={setSalesForceFile}
-            selectedFile={salesForceFile}
-          />
+          <FileUpload label="Planilha Locavia - Cores" onFileSelect={setLocaviaFile} selectedFile={locaviaFile} />
+          <FileUpload label="Planilha Salesforce - Cores" onFileSelect={setSalesForceFile} selectedFile={salesForceFile} />
         </div>
 
         {error && (
@@ -163,11 +202,11 @@ export function CoresComparison() {
 
         <button
           onClick={handleCompare}
-          disabled={!locaviaFile || !salesForceFile || isProcessing}
+          disabled={!locaviaFile || !salesForceFile || !baseIdsFile || isProcessing}
           className={`
             w-full py-4 rounded-lg font-semibold text-white
             transition-all duration-200 flex items-center justify-center space-x-2
-            ${!locaviaFile || !salesForceFile || isProcessing
+            ${!locaviaFile || !salesForceFile || !baseIdsFile || isProcessing
               ? 'bg-gray-300 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98] shadow-md hover:shadow-lg'
             }
@@ -236,27 +275,13 @@ export function CoresComparison() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Código
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Ano Mod
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        ID Cor
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Campo Locavia
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Valor Locavia
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Campo SF
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Valor SF
-                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ano Mod</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Cor</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campo Locavia</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor Locavia</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campo SF</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor SF</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -295,12 +320,8 @@ export function CoresComparison() {
           ) : (
             <div className="text-center py-12">
               <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                Nenhuma divergência encontrada
-              </h3>
-              <p className="text-gray-600">
-                Todos os registros com par perfeito estão sincronizados
-              </p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Nenhuma divergência encontrada</h3>
+              <p className="text-gray-600">Todos os registros com par perfeito estão sincronizados</p>
             </div>
           )}
         </div>
