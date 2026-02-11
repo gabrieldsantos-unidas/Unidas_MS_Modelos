@@ -10,7 +10,7 @@ type TabType = 'modelos' | 'opcionais' | 'cores';
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('modelos');
 
-  // NOVO: Base de IDs global (seleciona uma vez)
+  // Base de IDs global (seleciona uma vez)
   const [baseIdsFile, setBaseIdsFile] = useState<File | null>(null);
 
   const tabs = [
@@ -26,15 +26,13 @@ function App() {
           <div className="flex items-center justify-center mb-4">
             <FileSpreadsheet className="w-12 h-12 text-blue-600" />
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Comparador de Planilhas
-          </h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Comparador de Planilhas</h1>
           <p className="text-gray-600 max-w-2xl mx-auto">
             Compare dados entre Locavia e Salesforce, identifique divergências e gere relatórios detalhados
           </p>
         </div>
 
-        {/* NOVO: Carregamento global da Base de IDs */}
+        {/* Carregamento global da Base de IDs */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
           <div className="flex items-center gap-2 mb-4">
             <Database className="w-5 h-5 text-slate-600" />
@@ -42,13 +40,14 @@ function App() {
           </div>
 
           <p className="text-sm text-gray-600 mb-4">
-            Planilha usada para buscar IDs de Dispositivo, Cor e Opcional (IRIS_TipoRegistro__c: IRIS_Dispositivo, IRIS_Cores, IRIS_Opicionais).
-            Necessária para exportar corretamente os campos IRIS_Dispositivo__c e IRIS_Cor__c/IRIS_Opcional__c.
+            Planilha usada para buscar IDs de Dispositivo, Cor e Opcional (IRIS_TipoRegistro__c: IRIS_Dispositivo,
+            IRIS_Cores, IRIS_Opicionais). Necessária para exportar corretamente IRIS_Dispositivo__c e
+            IRIS_Cor__c/IRIS_Opcional__c.
           </p>
 
           <FileUpload
             label="Planilha Base (IDs de Dispositivos / Cores / Opcionais)"
-            onFileSelect={setBaseIdsFile as any}
+            onFileSelect={setBaseIdsFile}
             selectedFile={baseIdsFile}
           />
         </div>
@@ -68,8 +67,7 @@ function App() {
                       flex items-center justify-center space-x-2
                       ${isActive
                         ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                      }
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
                     `}
                   >
                     <Icon className="w-5 h-5" />

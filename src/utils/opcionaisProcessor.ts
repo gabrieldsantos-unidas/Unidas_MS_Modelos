@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { LocaviaOpcionais, SalesForceOpcionais } from '../types';
+import { normalizeLookupKey } from './baseIdsProcessor';
 
 const getLastTwoDigitsOfYear = (year: string): string => {
   const yearStr = String(year).trim();
@@ -9,20 +10,16 @@ const getLastTwoDigitsOfYear = (year: string): string => {
 const deduplicateByHighestPrice = (data: LocaviaOpcionais[]): LocaviaOpcionais[] => {
   const grouped = new Map<string, LocaviaOpcionais>();
 
-  data.forEach((item) => {
+  data.forEach(item => {
     const anoModelo = getLastTwoDigitsOfYear(item.AnoModelo);
-    const key = `${item.CodigoModelo}_${anoModelo}_${item.IRIS_IdOpcionais__c}`;
+    const key = `${item.CodigoModelo}_${anoModelo}_${item.IRIS_Optional_ID__c}`;
     const existing = grouped.get(key);
 
-    if (!existing) {
-      grouped.set(key, item);
-    } else {
+    if (!existing) grouped.set(key, item);
+    else {
       const existingPrice = existing.Preco_Publico__c || 0;
       const currentPrice = item.Preco_Publico__c || 0;
-
-      if (currentPrice > existingPrice) {
-        grouped.set(key, item);
-      }
+      if (currentPrice > existingPrice) grouped.set(key, item);
     }
   });
 
@@ -45,19 +42,16 @@ export const processLocaviaOpcionais = (file: File): Promise<LocaviaOpcionais[]>
           CodigoModelo: String(row['CodigoModelo'] || '').trim(),
           AnoModelo: String(row['AnoModelo'] || '').trim(),
           Name: String(row['Name'] || '').trim(),
-          IRIS_IdOpcionais__c: String(row['IRIS_IdOpcionais__c'] || '').trim(),
+          IRIS_Optional_ID__c: normalizeLookupKey(row['IRIS_Optional_ID__c'] || ''),
           IsActive: String(row['IsActive'] || '').trim(),
           Preco_Publico__c:
-            row['Preco_Publico__c'] !== undefined &&
-            row['Preco_Publico__c'] !== null &&
-            row['Preco_Publico__c'] !== ''
+            row['Preco_Publico__c'] !== undefined && row['Preco_Publico__c'] !== null && row['Preco_Publico__c'] !== ''
               ? Number(row['Preco_Publico__c'])
               : null,
           IRIS_Segmento_do_Produto__c: String(row['IRIS_Segmento_do_Produto__c'] || '').trim(),
         }));
 
-        const deduplicatedData = deduplicateByHighestPrice(processedData);
-        resolve(deduplicatedData);
+        resolve(deduplicateByHighestPrice(processedData));
       } catch (error) {
         reject(error);
       }
@@ -81,7 +75,7 @@ export const processSalesForceOpcionais = (file: File): Promise<SalesForceOpcion
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
         const processedData: SalesForceOpcionais[] = (jsonData as any[]).map((row: any) => ({
-          // Id do registro IRIS_Produto_Opcional__c (para update)
+          // ✅ Id do registro IRIS_Produto_Opcional__c
           Id: String(row['Id'] || '').trim(),
 
           IRIS_Codigo_Modelo_Locavia_Integracao__c: String(
@@ -89,41 +83,33 @@ export const processSalesForceOpcionais = (file: File): Promise<SalesForceOpcion
               row['IRIS_Codigo_Modelo_Locavia_Integracao__c'] ||
               ''
           ).trim(),
+
           IRIS_Codigo_do_Modelo_do_Locavia__c: String(
             row['IRIS_Dispositivo__r.IRIS_Codigo_do_Modelo_do_Locavia__c'] ||
               row['IRIS_Codigo_do_Modelo_do_Locavia__c'] ||
               ''
           ).trim(),
-          ProductCode_Modelo: String(
-            row['IRIS_Dispositivo__r.ProductCode'] || row['ProductCode_Modelo'] || ''
-          ).trim(),
-          IRIS_Dispositivo_Id: String(
-            row['IRIS_Dispositivo__r.Id'] || row['IRIS_Dispositivo_Id'] || ''
-          ).trim(),
-          IRIS_Anodomodelo__c: String(
-            row['IRIS_Dispositivo__r.IRIS_Anodomodelo__c'] || row['IRIS_Anodomodelo__c'] || ''
-          ).trim(),
+
+          ProductCode_Modelo: String(row['IRIS_Dispositivo__r.ProductCode'] || row['ProductCode_Modelo'] || '').trim(),
+          IRIS_Dispositivo_Id: String(row['IRIS_Dispositivo__r.Id'] || row['IRIS_Dispositivo_Id'] || '').trim(),
+          IRIS_Anodomodelo__c: String(row['IRIS_Dispositivo__r.IRIS_Anodomodelo__c'] || row['IRIS_Anodomodelo__c'] || '').trim(),
 
           Name: String(row['IRIS_Opcional__r.Name'] || row['Name'] || '').trim(),
-          IRIS_IdOpcionais__c: String(
-            row['IRIS_Opcional__r.IRIS_IdOpcionais__c'] || row['IRIS_IdOpcionais__c'] || ''
-          ).trim(),
-          ProductCode_Opcional: String(
-            row['IRIS_Opcional__r.ProductCode'] || row['ProductCode_Opcional'] || ''
-          ).trim(),
+          IRIS_IdOpcionais__c: normalizeLookupKey(row['IRIS_Opcional__r.IRIS_IdOpcionais__c'] || row['IRIS_IdOpcionais__c'] || ''),
+          ProductCode_Opcional: String(row['IRIS_Opcional__r.ProductCode'] || row['ProductCode_Opcional'] || '').trim(),
 
-          // relacionamento IRIS_Opcional__r.Id
-          IRIS_Opcional_RelatedId: String(
-            row['IRIS_Opcional__r.Id'] || row['IRIS_Opcional_RelatedId'] || ''
-          ).trim(),
+          // ✅ Id do relacionamento (Opcional)
+          IRIS_Opcional__r_Id: String(row['IRIS_Opcional__r.Id'] || '').trim(),
 
           IsActive: row['IsActive'] === true || row['IsActive'] === 'true' || row['IsActive'] === 1,
+
           Preco_Publico__c:
             (row['IRIS_Opcional__r.Preco_Publico__c'] || row['Preco_Publico__c']) !== undefined &&
             (row['IRIS_Opcional__r.Preco_Publico__c'] || row['Preco_Publico__c']) !== null &&
             (row['IRIS_Opcional__r.Preco_Publico__c'] || row['Preco_Publico__c']) !== ''
               ? Number(row['IRIS_Opcional__r.Preco_Publico__c'] || row['Preco_Publico__c'])
               : null,
+
           IRIS_Segmento_do_Produto__c: String(row['IRIS_Segmento_do_Produto__c'] || '').trim(),
         }));
 

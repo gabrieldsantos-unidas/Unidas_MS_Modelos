@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 
 interface FileUploadProps {
   label: string;
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File | null) => void;
   selectedFile: File | null;
   accept?: string;
 }
@@ -39,7 +39,7 @@ export const FileUpload = ({ label, onFileSelect, selectedFile, accept = '.xlsx,
   };
 
   const handleRemoveFile = () => {
-    onFileSelect(null as any);
+    onFileSelect(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -47,9 +47,7 @@ export const FileUpload = ({ label, onFileSelect, selectedFile, accept = '.xlsx,
 
   return (
     <div className="w-full">
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        {label}
-      </label>
+      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
 
       {!selectedFile ? (
         <div
@@ -60,19 +58,13 @@ export const FileUpload = ({ label, onFileSelect, selectedFile, accept = '.xlsx,
           className={`
             border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
             transition-all duration-200
-            ${isDragging
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-            }
+            ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'}
           `}
         >
           <Upload className={`w-12 h-12 mx-auto mb-3 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`} />
-          <p className="text-sm text-gray-600 mb-1">
-            Arraste e solte o arquivo aqui ou clique para selecionar
-          </p>
-          <p className="text-xs text-gray-500">
-            Formatos aceitos: .xlsx, .xls
-          </p>
+          <p className="text-sm text-gray-600 mb-1">Arraste e solte o arquivo aqui ou clique para selecionar</p>
+          <p className="text-xs text-gray-500">Formatos aceitos: .xlsx, .xls</p>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -89,15 +81,11 @@ export const FileUpload = ({ label, onFileSelect, selectedFile, accept = '.xlsx,
             </div>
             <div>
               <p className="text-sm font-medium text-gray-900">{selectedFile.name}</p>
-              <p className="text-xs text-gray-500">
-                {(selectedFile.size / 1024).toFixed(2)} KB
-              </p>
+              <p className="text-xs text-gray-500">{(selectedFile.size / 1024).toFixed(2)} KB</p>
             </div>
           </div>
-          <button
-            onClick={handleRemoveFile}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
+
+          <button onClick={handleRemoveFile} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>

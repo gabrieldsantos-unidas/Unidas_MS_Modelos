@@ -1,7 +1,4 @@
-export type IrisTipoRegistro =
-  | 'IRIS_Cores'
-  | 'IRIS_Dispositivo'
-  | 'IRIS_Opicionais';
+export type IrisTipoRegistro = 'IRIS_Cores' | 'IRIS_Dispositivo' | 'IRIS_Opicionais';
 
 export interface BaseIdRecord {
   Id: string;
@@ -10,7 +7,21 @@ export interface BaseIdRecord {
   IRIS_Codigo_Cor_Locavia__c: string | null;
   IRIS_Id_Locavia__c: string | null;
   IRIS_TipoRegistro__c: IrisTipoRegistro;
+
+  // NOVO
+  IRIS_NaoComercializado__c: boolean | null;
 }
+
+export interface ProductOptionRecord {
+  SBQQ__ConfiguredSKU__r_Name: string;
+  SBQQ__ConfiguredSKU__r_ProductCode: string;
+  SBQQ__OptionalSKU__r_IRIS_ProductFeature__c: string;
+  SBQQ__OptionalSKU__r_Name: string;
+  SBQQ__OptionalSKU__r_IRIS_Id_Locavia__c: string;
+  SBQQ__OptionalSKU__r_Id: string;
+}
+
+/** =================== MODELOS =================== */
 
 export interface LocaviaRecord {
   CodigoModelo: string;
@@ -64,18 +75,20 @@ export interface ComparisonResults {
   semParNoLocavia: SalesForceRecord[];
 }
 
+/** =================== OPCIONAIS =================== */
+
 export interface LocaviaOpcionais {
   CodigoModelo: string;
   AnoModelo: string;
   Name: string;
-  IRIS_IdOpcionais__c: string;
+  IRIS_Optional_ID__c: string;
   IsActive: string;
   Preco_Publico__c: number | null;
   IRIS_Segmento_do_Produto__c: string;
 }
 
 export interface SalesForceOpcionais {
-  // ID do registro (linha) no objeto IRIS_Produto_Opcional__c (para update)
+  // NOVO: Id do registro SF (IRIS_Produto_Opcional__c)
   Id: string;
 
   IRIS_Codigo_Modelo_Locavia_Integracao__c: string;
@@ -83,18 +96,47 @@ export interface SalesForceOpcionais {
   ProductCode_Modelo: string;
   IRIS_Dispositivo_Id: string;
   IRIS_Anodomodelo__c: string;
-
   Name: string;
   IRIS_IdOpcionais__c: string;
   ProductCode_Opcional: string;
 
-  // ID do relacionamento (IRIS_Opcional__r.Id) para preencher IRIS_Opcional__c
-  IRIS_Opcional_RelatedId: string;
+  // NOVO: Id do relacionamento (produto opcional)
+  IRIS_Opcional__r_Id: string;
 
   IsActive: boolean;
   Preco_Publico__c: number | null;
   IRIS_Segmento_do_Produto__c: string;
 }
+
+export interface OpcionaisDivergence {
+  // NOVO: Id do registro SF para update
+  SalesforceId: string;
+
+  CodigoModelo: string;
+  AnoModelo: string;
+  OptionalID: string;
+  ProductCode_Modelo: string;
+  IRIS_Dispositivo_Id: string;
+  IRIS_Codigo_do_Modelo_do_Locavia__c: string;
+  ProductCode_Opcional: string;
+  Preco_Publico__c: number | null;
+
+  // NOVO: Id do relacionamento
+  IRIS_Opcional__r_Id: string;
+
+  Campo_Locavia: string;
+  Valor_Locavia: string | number | boolean | null;
+  Campo_SF: string;
+  Valor_SF: string | number | boolean | null;
+}
+
+export interface OpcionaisComparisonResults {
+  divergencias: OpcionaisDivergence[];
+  semParNoSF: LocaviaOpcionais[];
+  semParNoLocavia: SalesForceOpcionais[];
+}
+
+/** =================== CORES =================== */
 
 export interface LocaviaCores {
   CodigoModelo: string;
@@ -107,7 +149,7 @@ export interface LocaviaCores {
 }
 
 export interface SalesForceCores {
-  // ID do registro (linha) no objeto IRIS_Produto_Cor__c (para update)
+  // NOVO: Id do registro SF (IRIS_Produto_Cor__c)
   Id: string;
 
   IRIS_Codigo_Modelo_Locavia_Integracao__c: string;
@@ -115,71 +157,36 @@ export interface SalesForceCores {
   ProductCode_Modelo: string;
   IRIS_Dispositvo_Id: string;
   IRIS_Anodomodelo__c: string;
-
   IRIS_Cor_Name: string;
   IRIS_Cor_ID__c: string;
   ProductCode_Cor: string;
 
-  // ID do relacionamento (IRIS_Cor__r.Id) para preencher IRIS_Cor__c
-  IRIS_Cor_RelatedId: string;
+  // NOVO: Id do relacionamento (cor)
+  IRIS_Cor__r_Id: string;
 
   IRIS_Valor__c: number | null;
 }
 
-export interface OpcionaisDivergence {
-  CodigoModelo: string;
-  AnoModelo: string;
-  OptionalID: string;
-
-  ProductCode_Modelo: string;
-  IRIS_Dispositivo_Id: string;
-  IRIS_Codigo_do_Modelo_do_Locavia__c: string;
-  ProductCode_Opcional: string;
-
-  // do SF (para update)
-  SF_Id: string;
-  IRIS_Opcional_RelatedId: string;
-
-  // valor do Locavia (para export update)
-  Locavia_Preco_Publico__c: number | null;
-
-  Preco_Publico__c: number | null;
-
-  Campo_Locavia: string;
-  Valor_Locavia: string | number | boolean | null;
-  Campo_SF: string;
-  Valor_SF: string | number | boolean | null;
-}
-
 export interface CoresDivergence {
+  // NOVO: Id do registro SF para update
+  SalesforceId: string;
+
   CodigoModelo: string;
   AnoModelo: string;
   CorID: string;
-
   ProductCode_Modelo: string;
   IRIS_Dispositvo_Id: string;
   IRIS_Codigo_do_Modelo_do_Locavia__c: string;
   ProductCode_Cor: string;
 
-  // do SF (para update)
-  SF_Id: string;
-  IRIS_Cor_RelatedId: string;
-
-  // valor do Locavia (para export update)
-  Locavia_Preco_Publico__c: number | null;
+  // NOVO: Id do relacionamento
+  IRIS_Cor__r_Id: string;
 
   IRIS_Valor__c: number | null;
-
   Campo_Locavia: string;
   Valor_Locavia: string | number | boolean | null;
   Campo_SF: string;
   Valor_SF: string | number | boolean | null;
-}
-
-export interface OpcionaisComparisonResults {
-  divergencias: OpcionaisDivergence[];
-  semParNoSF: LocaviaOpcionais[];
-  semParNoLocavia: SalesForceOpcionais[];
 }
 
 export interface CoresComparisonResults {

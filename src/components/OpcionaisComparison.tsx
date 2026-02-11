@@ -1,42 +1,67 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { FileUpload } from './FileUpload';
 import { InfoPanel } from './InfoPanel';
 import { QueryInfo } from './QueryInfo';
 import { processLocaviaOpcionais, processSalesForceOpcionais } from '../utils/opcionaisProcessor';
 import { compareOpcionais } from '../utils/opcionaisComparison';
-import { processBaseIds } from '../utils/baseIdsProcessor';
-import { buildBaseLookups, BaseLookups } from '../utils/baseIdsLookup';
+import { processBaseIds, normalizeLookupKey } from '../utils/baseIdsProcessor';
+import { buildBaseLookups } from '../utils/baseIdsLookup';
+import { processProductOptions } from '../utils/productOptionProcessor';
 import { AlertCircle, CheckCircle, Download, BarChart3 } from 'lucide-react';
-import type { OpcionaisComparisonResults } from '../types';
+import type { OpcionaisComparisonResults, ProductOptionRecord } from '../types';
 import * as XLSX from 'xlsx';
 
 const OPCIONAIS_QUERY = `SELECT Id, CreatedDate, IRIS_Dispositivo__r.Name, IRIS_Dispositivo__r.id, IRIS_Dispositivo__r.IRIS_Codigo_do_Modelo_do_Locavia__c, IRIS_Dispositivo__r.IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Opcional__r.name, IRIS_Opcional__r.id, IRIS_Opcional__r.ProductCode, IRIS_Opcional__r.IRIS_IdOpcionais__c, IRIS_Opcional__r.Preco_Publico__c, IRIS_Dispositivo__r.IRIS_Anodomodelo__c
 FROM IRIS_Produto_Opcional__c
 ORDER BY CreatedDate DESC`;
 
+const BASE_IDS_QUERY = `SELECT Id, name, IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Codigo_Cor_Locavia__c,IRIS_Id_Locavia__c, IRIS_TipoRegistro__c, IRIS_NaoComercializado__c FROM Product2 where IRIS_TipoRegistro__c in ('IRIS_Cores','IRIS_Opicionais','IRIS_Dispositivo')`;
+
+const PRODUCT_OPTION_QUERY_PLACEHOLDER = `// TODO: você ainda não pegou a query
+// deixe aqui o SOQL quando tiver`;
+
 type Props = {
   baseIdsFile: File | null;
+};
+
+const buildRemocaoProductOption = (
+  semParNoLocaviaRows: { CodigoModelo: string; IdRef: string }[],
+  productOptions: ProductOptionRecord[],
+  feature: 'Cores' | 'Opcionais'
+) => {
+  const targetPairs = new Set<string>();
+  semParNoLocaviaRows.forEach((r) => {
+    const cod = normalizeLookupKey(r.CodigoModelo);
+    const idRef = normalizeLookupKey(r.IdRef);
+    if (cod && idRef) targetPairs.add(`${cod}__${idRef}`);
+  });
+
+  return productOptions.filter((po) => {
+    const poFeature = (po.SBQQ__OptionalSKU__r_IRIS_ProductFeature__c || '').trim();
+    if (poFeature !== feature) return false;
+
+    const cod = normalizeLookupKey(po.SBQQ__ConfiguredSKU__r_ProductCode);
+    const idRef = normalizeLookupKey(po.SBQQ__OptionalSKU__r_IRIS_Id_Locavia__c);
+    return targetPairs.has(`${cod}__${idRef}`);
+  });
 };
 
 export function OpcionaisComparison({ baseIdsFile }: Props) {
   const [locaviaFile, setLocaviaFile] = useState<File | null>(null);
   const [salesForceFile, setSalesForceFile] = useState<File | null>(null);
+
+  const [productOptionFile, setProductOptionFile] = useState<File | null>(null);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [results, setResults] = useState<OpcionaisComparisonResults | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [lookups, setLookups] = useState<BaseLookups | null>(null);
-
-  const hasBase = useMemo(() => !!baseIdsFile, [baseIdsFile]);
+  const [productOptionsCache, setProductOptionsCache] = useState<ProductOptionRecord[] | null>(null);
+  const [lookupsCache, setLookupsCache] = useState<ReturnType<typeof buildBaseLookups> | null>(null);
 
   const handleCompare = async () => {
-    if (!locaviaFile || !salesForceFile) {
-      setError('Por favor, selecione ambos os arquivos antes de comparar.');
-      return;
-    }
-
-    if (!baseIdsFile) {
-      setError('Por favor, selecione também a planilha Base de IDs (Product2).');
+    if (!locaviaFile || !salesForceFile || !baseIdsFile || !productOptionFile) {
+      setError('Por favor, selecione: Locavia, Salesforce, Base de IDs (no topo) e Product Option antes de comparar.');
       return;
     }
 
@@ -45,12 +70,16 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
     setResults(null);
 
     try {
-      const baseData = await processBaseIds(baseIdsFile);
-      const baseLookups = buildBaseLookups(baseData);
-      setLookups(baseLookups);
+      const [locaviaData, salesForceData, baseIds, productOptions] = await Promise.all([
+        processLocaviaOpcionais(locaviaFile),
+        processSalesForceOpcionais(salesForceFile),
+        processBaseIds(baseIdsFile),
+        processProductOptions(productOptionFile),
+      ]);
 
-      const locaviaData = await processLocaviaOpcionais(locaviaFile);
-      const salesForceData = await processSalesForceOpcionais(salesForceFile);
+      const lookups = buildBaseLookups(baseIds);
+      setLookupsCache(lookups);
+      setProductOptionsCache(productOptions);
 
       const comparisonResults = compareOpcionais(locaviaData, salesForceData);
       setResults(comparisonResults);
@@ -62,11 +91,11 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
   };
 
   const handleExport = () => {
-    if (!results || !lookups) return;
+    if (!results) return;
 
     const wb = XLSX.utils.book_new();
 
-    const divergenciasData = results.divergencias.map(d => ({
+    const divergenciasData = results.divergencias.map((d) => ({
       'Código Modelo': d.CodigoModelo,
       'Ano Modelo': d.AnoModelo,
       'ID Opcional': d.OptionalID,
@@ -76,72 +105,72 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
       'Valor SF': d.Valor_SF,
     }));
 
-    // 2) incluir Id do SF na aba Divergências SF
-    // 4) IRIS_Opcional__c deve receber o ID do relacionamento (IRIS_Opcional__r.Id) (fallback: Base)
-    // (para valor, se você atualizar preço: usar Locavia_Preco_Publico__c)
+    // Divergências SF (OPCIONAIS) só para Preco_Publico__c
     const divergenciasSFData = results.divergencias
-    .filter(d => d.Campo_Locavia === 'Preco_Publico__c')
-    .map(d => {
-      const dispositivoId = lookups.dispositivoByCodigoModelo.get(String(d.CodigoModelo)) || '';
+      .filter((d) => d.Campo_Locavia === 'Preco_Publico__c')
+      .map((d) => {
+        const idDispositivoOpcional = `DIS-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.IRIS_Codigo_do_Modelo_do_Locavia__c}-${d.ProductCode_Opcional}`;
 
-      const opcionalRelatedId =
-        d.IRIS_Opcional_RelatedId ||
-        lookups.opcionalIdByIdLocavia.get(String(d.OptionalID)) ||
-        '';
+        return {
+          Id: d.SalesforceId,
+          IRIS_Dispositivo__c: d.IRIS_Dispositivo_Id,
+          IRIS_Ano_Modelo__c: d.AnoModelo,
+          IRIS_Opcional__c: d.IRIS_Opcional__r_Id,
+          IRIS_IdDispositivo_Opcional__c: idDispositivoOpcional,
+          Preco_Publico__c: d.Valor_Locavia, // preço do Locavia
+        };
+      });
+
+    const lookups = lookupsCache;
+
+    const semParSFData = results.semParNoSF.map((r) => {
+      const dispositivoId = lookups?.dispositivoByIdLocavia.get(normalizeLookupKey(r.CodigoModelo)) || '';
+      const opcionalRelatedId = lookups?.opcionalIdByIdLocavia.get(normalizeLookupKey(r.IRIS_Optional_ID__c)) || '';
 
       return {
-        'Id': d.SF_Id,
-        'IRIS_Dispositivo__c': dispositivoId || d.IRIS_Dispositivo_Id,
-        'IRIS_Ano_Modelo__c': d.AnoModelo,
-        'IRIS_Opcional__c': opcionalRelatedId,
-        // se for atualizar preço no SF, mantenha Locavia
-        'Preco_Publico__c': d.Locavia_Preco_Publico__c,
+        IRIS_Dispositivo__c: dispositivoId,
+        IRIS_Anodomodelo__c: r.AnoModelo,
+        IRIS_Opcional__c: opcionalRelatedId,
+        Name: r.Name,
+        IRIS_IdOpcionais__c: r.IRIS_Optional_ID__c,
+        IsActive: r.IsActive,
+        Preco_Publico__c: r.Preco_Publico__c,
+        IRIS_Segmento_do_Produto__c: r.IRIS_Segmento_do_Produto__c,
       };
     });
 
-    // 5) Sem par no SF: remover IRIS_Codigo_Modelo... e incluir IRIS_Dispositivo__c e IRIS_Opcional__c via base
-    const semParSFData = results.semParNoSF.map(r => {
-      // REGRA NOVA (Sem par no SF):
-      // IRIS_Dispositivo__c: Locavia.CodigoModelo -> base.IRIS_Id_Locavia__c -> base.Id
-      const dispositivoId =
-        lookups.dispositivoByIdLocavia.get(String(r.CodigoModelo).trim()) || '';
-
-      // Opcional: permanece (Locavia.IRIS_IdOpcionais__c -> base.IRIS_Id_Locavia__c -> base.Id)
-      const opcionalRelatedId =
-        lookups.opcionalIdByIdLocavia.get(String(r.IRIS_IdOpcionais__c).trim()) || '';
-
-      return {
-        'IRIS_Dispositivo__c': dispositivoId,
-        'IRIS_Anodomodelo__c': r.AnoModelo,
-        'IRIS_Opcional__c': opcionalRelatedId,
-        'Name': r.Name,
-        'IRIS_IdOpcionais__c': r.IRIS_IdOpcionais__c,
-        'IsActive': r.IsActive,
-        'Preco_Publico__c': r.Preco_Publico__c,
-        'IRIS_Segmento_do_Produto__c': r.IRIS_Segmento_do_Produto__c,
-      };
-    });
-
-    const semParLocaviaData = results.semParNoLocavia.map(r => ({
+    const semParLocaviaData = results.semParNoLocavia.map((r) => ({
       'Id': r.Id,
       'Código Modelo': r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
       'Ano Modelo': r.IRIS_Anodomodelo__c,
-      'Nome': r.Name,
+      Nome: r.Name,
       'ID Opcional': r.IRIS_IdOpcionais__c,
-      'Ativo': r.IsActive,
+      Ativo: r.IsActive,
       'Preço Público': r.Preco_Publico__c,
-      'Segmento': r.IRIS_Segmento_do_Produto__c,
+      Segmento: r.IRIS_Segmento_do_Produto__c,
     }));
 
-    const wsDivergencias = XLSX.utils.json_to_sheet(divergenciasData);
-    const wsDivergenciasSF = XLSX.utils.json_to_sheet(divergenciasSFData);
-    const wsSemParSF = XLSX.utils.json_to_sheet(semParSFData);
-    const wsSemParLocavia = XLSX.utils.json_to_sheet(semParLocaviaData);
+    const productOptions = productOptionsCache || [];
+    const semParNoLocaviaPairs = results.semParNoLocavia.map((r) => ({
+      CodigoModelo: r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
+      IdRef: r.IRIS_IdOpcionais__c,
+    }));
 
-    XLSX.utils.book_append_sheet(wb, wsDivergencias, 'Divergências');
-    XLSX.utils.book_append_sheet(wb, wsDivergenciasSF, 'Divergências SF');
-    XLSX.utils.book_append_sheet(wb, wsSemParSF, 'Sem Par no SF');
-    XLSX.utils.book_append_sheet(wb, wsSemParLocavia, 'Sem Par no Locavia');
+    const remocaoPO = buildRemocaoProductOption(semParNoLocaviaPairs, productOptions, 'Opcionais');
+    const remocaoPOData = remocaoPO.map((r) => ({
+      'SBQQ__ConfiguredSKU__r.Name': r.SBQQ__ConfiguredSKU__r_Name,
+      'SBQQ__ConfiguredSKU__r.ProductCode': r.SBQQ__ConfiguredSKU__r_ProductCode,
+      'SBQQ__OptionalSKU__r.IRIS_ProductFeature__c': r.SBQQ__OptionalSKU__r_IRIS_ProductFeature__c,
+      'SBQQ__OptionalSKU__r.Name': r.SBQQ__OptionalSKU__r_Name,
+      'SBQQ__OptionalSKU__r.IRIS_Id_Locavia__c': r.SBQQ__OptionalSKU__r_IRIS_Id_Locavia__c,
+      'SBQQ__OptionalSKU__r.Id': r.SBQQ__OptionalSKU__r_Id,
+    }));
+
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(divergenciasData), 'Divergências');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(divergenciasSFData), 'Divergências SF');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(semParSFData), 'Sem Par no SF');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(semParLocaviaData), 'Sem Par no Locavia');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(remocaoPOData), 'Remoção Product Option');
 
     XLSX.writeFile(wb, 'comparacao_opcionais.xlsx');
   };
@@ -152,53 +181,27 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
         title="Como funciona a comparação de Produtos x Opcionais"
         sections={[
           {
-            title: "Dados Necessários",
+            title: 'Regras importantes',
             content: [
-              "Planilha Locavia: CodigoModelo, AnoModelo, Name, IRIS_IdOpcionais__c, IsActive, Preco_Publico__c, IRIS_Segmento_do_Produto__c",
-              "Planilha Salesforce: (incluindo Id), IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Anodomodelo__c, Name, IRIS_IdOpcionais__c, IsActive, Preco_Publico__c e (se possível) IRIS_Opcional__r.Id",
-              "Planilha Base de IDs: Id, IRIS_TipoRegistro__c (IRIS_Dispositivo/IRIS_Cores/IRIS_Opicionais) e chaves de cruzamento",
-              "Arquivos devem estar no formato Excel (.xlsx ou .xls)"
-            ]
+              'Nome (Name) é comparado em lowercase (ignora maiúsculas/minúsculas).',
+              'Na Base de IDs, só usar dispositivos com IRIS_NaoComercializado__c = false.',
+              'Divergências SF (OPCIONAIS) exporta somente divergências de Preco_Publico__c.',
+              'Sem par no SF preenche IRIS_Dispositivo__c e IRIS_Opcional__c via Base de IDs.',
+              'Remoção Product Option é gerada com base em Sem par no Locavia.',
+            ],
           },
-          {
-            title: "Como Funciona",
-            content: [
-              "1ª Validação: Verifica se o modelo existe (CodigoModelo + últimos 2 dígitos do AnoModelo)",
-              "2ª Validação: Valida o código do opcional (IRIS_IdOpcionais__c) e cria a chave de comparação",
-              "3ª Validação: Compara os valores (Nome, Status Ativo, Preço Público e Segmento)",
-              "Normalização de nome: comparação em lowercase",
-              "4ª Validação: Se houver duplicatas no Locavia, considera o registro com maior preço",
-              "Resultado: Identifica opcionais a INCLUIR no SF e opcionais a DELETAR do SF"
-            ]
-          },
-          {
-            title: "Resultados",
-            content: [
-              "Divergências: Opcionais com valores diferentes entre as bases",
-              "Divergências SF: Aba pronta para update (inclui Id do SF e usa valores do Locavia quando aplicável)",
-              "Sem par no SF (INCLUIR): Opcionais cadastrados no Locavia mas ausentes no Salesforce",
-              "Sem par no Locavia (DELETAR): Opcionais cadastrados no Salesforce mas ausentes no Locavia",
-              "Exportação em Excel com análise completa"
-            ]
-          }
         ]}
       />
 
       <QueryInfo title="Query SQL do Salesforce para Opcionais" query={OPCIONAIS_QUERY} />
+      <QueryInfo title="Query Base de IDs (Product2)" query={BASE_IDS_QUERY} />
+      <QueryInfo title="Query Product Option" query={PRODUCT_OPTION_QUERY_PLACEHOLDER} />
 
       <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-        {!hasBase && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-amber-800">
-              Selecione a <b>Base de IDs</b> no topo do sistema antes de comparar.
-            </p>
-          </div>
-        )}
-
         <div className="grid md:grid-cols-2 gap-8 mb-8">
           <FileUpload label="Planilha Locavia - Opcionais" onFileSelect={setLocaviaFile} selectedFile={locaviaFile} />
           <FileUpload label="Planilha Salesforce - Opcionais" onFileSelect={setSalesForceFile} selectedFile={salesForceFile} />
+          <FileUpload label="Product Option" onFileSelect={setProductOptionFile} selectedFile={productOptionFile} />
         </div>
 
         {error && (
@@ -210,14 +213,13 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
 
         <button
           onClick={handleCompare}
-          disabled={!locaviaFile || !salesForceFile || !baseIdsFile || isProcessing}
+          disabled={!locaviaFile || !salesForceFile || !baseIdsFile || !productOptionFile || isProcessing}
           className={`
             w-full py-4 rounded-lg font-semibold text-white
             transition-all duration-200 flex items-center justify-center space-x-2
-            ${!locaviaFile || !salesForceFile || !baseIdsFile || isProcessing
+            ${!locaviaFile || !salesForceFile || !baseIdsFile || !productOptionFile || isProcessing
               ? 'bg-gray-300 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98] shadow-md hover:shadow-lg'
-            }
+              : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98] shadow-md hover:shadow-lg'}
           `}
         >
           {isProcessing ? (
@@ -247,83 +249,10 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
             </button>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-6 border border-red-200">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-red-900">Divergências</h3>
-                <AlertCircle className="w-5 h-5 text-red-600" />
-              </div>
-              <p className="text-3xl font-bold text-red-900">{results.divergencias.length}</p>
-              <p className="text-xs text-red-700 mt-1">Campos com diferenças</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-6 border border-amber-200">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-amber-900">Sem par no SF</h3>
-                <AlertCircle className="w-5 h-5 text-amber-600" />
-              </div>
-              <p className="text-3xl font-bold text-amber-900">{results.semParNoSF.length}</p>
-              <p className="text-xs text-amber-700 mt-1">Registros apenas no Locavia</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6 border border-blue-200">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-blue-900">Sem par no Locavia</h3>
-                <AlertCircle className="w-5 h-5 text-blue-600" />
-              </div>
-              <p className="text-3xl font-bold text-blue-900">{results.semParNoLocavia.length}</p>
-              <p className="text-xs text-blue-700 mt-1">Registros apenas no SF</p>
-            </div>
-          </div>
-
           {results.divergencias.length > 0 ? (
-            <div className="overflow-x-auto">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Detalhes das Divergências</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ano Mod</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Opcional</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campo Locavia</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor Locavia</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campo SF</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor SF</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {results.divergencias.slice(0, 50).map((div, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 text-sm text-gray-900">{div.CodigoModelo}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{div.AnoModelo}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{div.OptionalID}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{div.Campo_Locavia}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {div.Valor_Locavia === null || div.Valor_Locavia === '' ? (
-                            <span className="text-gray-400 italic">vazio</span>
-                          ) : (
-                            String(div.Valor_Locavia)
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{div.Campo_SF}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {div.Valor_SF === null || div.Valor_SF === '' ? (
-                            <span className="text-gray-400 italic">vazio</span>
-                          ) : (
-                            String(div.Valor_SF)
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {results.divergencias.length > 50 && (
-                <p className="text-sm text-gray-600 mt-4 text-center">
-                  Mostrando 50 de {results.divergencias.length} divergências. Exporte para ver todas.
-                </p>
-              )}
+            <div className="text-center py-6">
+              <p className="text-gray-700">Divergências encontradas: {results.divergencias.length}</p>
+              <p className="text-gray-600 text-sm">“Divergências SF” inclui apenas divergências de preço.</p>
             </div>
           ) : (
             <div className="text-center py-12">
