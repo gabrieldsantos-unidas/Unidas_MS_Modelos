@@ -137,14 +137,18 @@ export function CoresComparison({ baseIdsFile }: Props) {
       };
     });
 
-    const semParLocaviaData = results.semParNoLocavia.map((r) => ({
-      'Id': r.Id,
+    const semParLocaviaData = results.semParNoLocavia.map(r => ({
+      'Id (IRIS_Produto_Cor__c)': r.Id,
+      'CreatedDate': r.CreatedDate || '',
       'Código Modelo': r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
       'Ano Modelo': r.IRIS_Anodomodelo__c,
       'Nome Cor': r.IRIS_Cor_Name,
-      'ID Cor': r.IRIS_Cor_ID__c,
-      Valor: r.IRIS_Valor__c,
+      'ID Cor (raw)': r.IRIS_Cor_ID__c_raw || '',
+      'ID Cor (normalizado)': r.IRIS_Cor_ID__c,
+      'Cor Product2 Id': r.IRIS_Cor__r_Id,
+      'Valor': r.IRIS_Valor__c,
     }));
+
 
     const productOptions = productOptionsCache || [];
     const semParNoLocaviaPairs = results.semParNoLocavia.map((r) => ({

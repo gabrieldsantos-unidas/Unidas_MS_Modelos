@@ -72,40 +72,56 @@ export const processSalesForceCores = (file: File): Promise<SalesForceCores[]> =
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
 
-        const processedData: SalesForceCores[] = (jsonData as any[]).map((row: any) => ({
-          // ✅ Id do registro IRIS_Produto_Cor__c
-          Id: String(row['Id'] || '').trim(),
+        const processedData: SalesForceCores[] = (jsonData as any[]).map((row: any) => {
+          const corIdRaw =
+            row['IRIS_Cor__r.IRIS_Cor_ID__c'] ??
+            row['IRIS_Cor_ID__c'] ??
+            '';
 
-          IRIS_Codigo_Modelo_Locavia_Integracao__c: String(
-            row['IRIS_Dispositvo__r.IRIS_Codigo_Modelo_Locavia_Integracao__c'] ||
-              row['IRIS_Codigo_Modelo_Locavia_Integracao__c'] ||
-              ''
-          ).trim(),
+          return {
+            Id: String(row['Id'] || '').trim(),
+            CreatedDate: String(row['CreatedDate'] || '').trim(), // ✅ novo
 
-          IRIS_Codigo_do_Modelo_do_Locavia__c: String(
-            row['IRIS_Dispositvo__r.IRIS_Codigo_do_Modelo_do_Locavia__c'] ||
-              row['IRIS_Codigo_do_Modelo_do_Locavia__c'] ||
-              ''
-          ).trim(),
+            IRIS_Codigo_Modelo_Locavia_Integracao__c: String(
+              row['IRIS_Dispositvo__r.IRIS_Codigo_Modelo_Locavia_Integracao__c'] ||
+                row['IRIS_Codigo_Modelo_Locavia_Integracao__c'] ||
+                ''
+            ).trim(),
 
-          ProductCode_Modelo: String(row['IRIS_Dispositvo__r.ProductCode'] || row['ProductCode_Modelo'] || '').trim(),
-          IRIS_Dispositvo_Id: String(row['IRIS_Dispositvo__r.Id'] || row['IRIS_Dispositvo_Id'] || '').trim(),
-          IRIS_Anodomodelo__c: String(row['IRIS_Dispositvo__r.IRIS_Anodomodelo__c'] || row['IRIS_Anodomodelo__c'] || '').trim(),
+            IRIS_Codigo_do_Modelo_do_Locavia__c: String(
+              row['IRIS_Dispositvo__r.IRIS_Codigo_do_Modelo_do_Locavia__c'] ||
+                row['IRIS_Codigo_do_Modelo_do_Locavia__c'] ||
+                ''
+            ).trim(),
 
-          IRIS_Cor_Name: String(row['IRIS_Cor__r.Name'] || row['IRIS_Cor_Name'] || '').trim(),
-          IRIS_Cor_ID__c: normalizeLookupKey(row['IRIS_Cor__r.IRIS_Cor_ID__c'] || row['IRIS_Cor_ID__c'] || ''),
-          ProductCode_Cor: String(row['IRIS_Cor__r.ProductCode'] || row['ProductCode_Cor'] || '').trim(),
+            ProductCode_Modelo: String(row['IRIS_Dispositvo__r.ProductCode'] || row['ProductCode_Modelo'] || '').trim(),
+            IRIS_Dispositvo_Id: String(row['IRIS_Dispositvo__r.Id'] || row['IRIS_Dispositvo_Id'] || '').trim(),
+            IRIS_Anodomodelo__c: String(row['IRIS_Dispositvo__r.IRIS_Anodomodelo__c'] || row['IRIS_Anodomodelo__c'] || '').trim(),
 
-          // ✅ Id do relacionamento (Cor)
-          IRIS_Cor__r_Id: String(row['IRIS_Cor__r.Id'] || '').trim(),
+            IRIS_Cor_Name: String(row['IRIS_Cor__r.Name'] || row['IRIS_Cor_Name'] || '').trim(),
 
-          IRIS_Valor__c:
-            row['IRIS_Valor__c'] !== undefined && row['IRIS_Valor__c'] !== null && row['IRIS_Valor__c'] !== ''
-              ? Number(row['IRIS_Valor__c'])
-              : null,
-        }));
+            // ✅ RAW (pra visualizar 63.0) + normalizado (pra comparar)
+            IRIS_Cor_ID__c_raw: String(corIdRaw ?? '').trim(),
+            IRIS_Cor_ID__c: normalizeLookupKey(corIdRaw),
+
+            ProductCode_Cor: String(row['IRIS_Cor__r.ProductCode'] || row['ProductCode_Cor'] || '').trim(),
+
+            IRIS_Cor__r_Id: String(row['IRIS_Cor__r.Id'] || '').trim(),
+
+            IRIS_Valor__c:
+              row['IRIS_Valor__c'] !== undefined && row['IRIS_Valor__c'] !== null && row['IRIS_Valor__c'] !== ''
+                ? Number(row['IRIS_Valor__c'])
+                : null,
+          };
+        });
+
+        const debug178 = processedData.filter(
+          x => x.IRIS_Codigo_Modelo_Locavia_Integracao__c === '178' && (x.IRIS_Cor_ID__c === '63' || x.IRIS_Cor_ID__c === '63.0')
+        );
+        console.log('[DEBUG] SF 178/63 count:', debug178.length, debug178.map(x => ({ id: x.Id, raw: x.IRIS_Cor_ID__c_raw, created: x.CreatedDate })));
+
 
         resolve(processedData);
       } catch (error) {
@@ -117,3 +133,5 @@ export const processSalesForceCores = (file: File): Promise<SalesForceCores[]> =
     reader.readAsBinaryString(file);
   });
 };
+
+

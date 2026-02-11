@@ -149,23 +149,25 @@ export interface LocaviaCores {
 }
 
 export interface SalesForceCores {
-  // NOVO: Id do registro SF (IRIS_Produto_Cor__c)
   Id: string;
+  CreatedDate?: string; // ✅ novo (pra debug/visualização)
 
   IRIS_Codigo_Modelo_Locavia_Integracao__c: string;
   IRIS_Codigo_do_Modelo_do_Locavia__c: string;
   ProductCode_Modelo: string;
   IRIS_Dispositvo_Id: string;
   IRIS_Anodomodelo__c: string;
+
   IRIS_Cor_Name: string;
-  IRIS_Cor_ID__c: string;
+
+  IRIS_Cor_ID__c: string;        // ✅ normalizado (pra comparação)
+  IRIS_Cor_ID__c_raw?: string;   // ✅ novo (pra mostrar 63.0)
+
   ProductCode_Cor: string;
-
-  // NOVO: Id do relacionamento (cor)
   IRIS_Cor__r_Id: string;
-
   IRIS_Valor__c: number | null;
 }
+
 
 export interface CoresDivergence {
   // NOVO: Id do registro SF para update

@@ -1,4 +1,3 @@
-// src/utils/coresComparison.ts
 import {
   LocaviaCores,
   SalesForceCores,
@@ -39,41 +38,35 @@ export const compareCores = (
   const semParNoSF: LocaviaCores[] = [];
   const semParNoLocavia: SalesForceCores[] = [];
 
-  /**
-   * ✅ FIX: não pode ser Map<string, SalesForceCores> pois pode haver duplicados
-   * (ex.: 63 e 63.0 normalizam para a mesma chave).
-   * Então guardamos uma lista por chave e consumimos 1 por vez.
-   */
+  // ✅ AGORA guarda LISTA por chave (não sobrescreve)
   const sfMap = new Map<string, SalesForceCores[]>();
 
   salesforce.forEach((sf) => {
     const anoModelo = getLastTwoDigitsOfYear(sf.IRIS_Anodomodelo__c);
     const key = `${sf.IRIS_Codigo_Modelo_Locavia_Integracao__c}_${anoModelo}_${sf.IRIS_Cor_ID__c}`;
-    const arr = sfMap.get(key) ?? [];
-    arr.push(sf);
-    sfMap.set(key, arr);
-  });
 
-  // Opcional: garantir consistência de qual será consumido primeiro.
-  // Como o export do Salesforce geralmente vem ORDER BY CreatedDate DESC,
-  // e o sheet_to_json costuma manter a ordem, o push já preserva isso.
-  // Mesmo assim, se você incluir CreatedDate no tipo, pode ordenar aqui.
+    const list = sfMap.get(key) || [];
+    list.push(sf);
+    sfMap.set(key, list);
+  });
 
   locavia.forEach((loc) => {
     const anoModelo = getLastTwoDigitsOfYear(loc.AnoModelo);
     const key = `${loc.CodigoModelo}_${anoModelo}_${loc.IRIS_Cor_ID__c}`;
 
-    const bucket = sfMap.get(key);
+    const list = sfMap.get(key);
 
-    if (!bucket || bucket.length === 0) {
+    if (!list || list.length === 0) {
       semParNoSF.push(loc);
       return;
     }
 
-    // Consome 1 registro do SF para fazer o match com este Locavia
-    const sf = bucket.shift()!;
-    if (bucket.length === 0) sfMap.delete(key);
-    else sfMap.set(key, bucket);
+    // ✅ Consome 1 registro do SF para esse par
+    const sf = list.shift()!;
+
+    // se acabou a lista, remove a chave do map
+    if (list.length === 0) sfMap.delete(key);
+    else sfMap.set(key, list);
 
     // ✅ (1) nome case-insensitive
     const locName = (loc.Name || '').toLowerCase();
@@ -118,9 +111,9 @@ export const compareCores = (
     }
   });
 
-  // Tudo o que sobrar em qualquer bucket vira "Sem par no Locavia"
-  sfMap.forEach((bucket) => {
-    bucket.forEach((sf) => semParNoLocavia.push(sf));
+  // ✅ Tudo que sobrou no SF (inclusive duplicados) vira "Sem par no Locavia"
+  sfMap.forEach((list) => {
+    list.forEach((sf) => semParNoLocavia.push(sf));
   });
 
   return { divergencias, semParNoSF, semParNoLocavia };
