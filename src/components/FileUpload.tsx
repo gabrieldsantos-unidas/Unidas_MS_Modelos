@@ -1,5 +1,6 @@
-import { Upload, X } from 'lucide-react';
+// src/components/FileUpload.tsx
 import { useRef, useState } from 'react';
+import { Upload, X } from 'lucide-react';
 
 interface FileUploadProps {
   label: string;
@@ -65,13 +66,7 @@ export const FileUpload = ({ label, onFileSelect, selectedFile, accept = '.xlsx,
           <p className="text-sm text-gray-600 mb-1">Arraste e solte o arquivo aqui ou clique para selecionar</p>
           <p className="text-xs text-gray-500">Formatos aceitos: .xlsx, .xls</p>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={accept}
-            onChange={handleFileChange}
-            className="hidden"
-          />
+          <input ref={fileInputRef} type="file" accept={accept} onChange={handleFileChange} className="hidden" />
         </div>
       ) : (
         <div className="border border-gray-300 rounded-lg p-4 flex items-center justify-between bg-white">

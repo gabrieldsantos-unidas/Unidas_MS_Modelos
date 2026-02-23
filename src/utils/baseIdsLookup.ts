@@ -13,7 +13,6 @@ export const buildBaseLookups = (base: BaseIdRecord[]): BaseLookups => {
   const opcionalIdByIdLocavia = new Map<string, string>();
 
   base.forEach((r) => {
-    debugger;
     const tipo = normalizeLookupKey(r.IRIS_TipoRegistro__c);
 
     if (tipo === 'IRIS_Dispositivo') {

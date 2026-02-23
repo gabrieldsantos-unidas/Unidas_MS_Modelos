@@ -99,6 +99,7 @@ export const processSalesForceCores = (file: File): Promise<SalesForceCores[]> =
             ProductCode_Modelo: String(row['IRIS_Dispositvo__r.ProductCode'] || row['ProductCode_Modelo'] || '').trim(),
             IRIS_Dispositvo_Id: String(row['IRIS_Dispositvo__r.Id'] || row['IRIS_Dispositvo_Id'] || '').trim(),
             IRIS_Anodomodelo__c: String(row['IRIS_Dispositvo__r.IRIS_Anodomodelo__c'] || row['IRIS_Anodomodelo__c'] || '').trim(),
+            IRIS_AnodeFabricacao__c: String(row['IRIS_Dispositvo__r.IRIS_AnodeFabricacao__c'] || row['IRIS_AnodeFabricacao__c'] || '').trim(),
 
             IRIS_Cor_Name: String(row['IRIS_Cor__r.Name'] || row['IRIS_Cor_Name'] || '').trim(),
 

@@ -26,6 +26,7 @@ const deduplicateByHighestPrice = (data: LocaviaOpcionais[]): LocaviaOpcionais[]
   return Array.from(grouped.values());
 };
 
+// src/utils/opcionaisProcessor.ts
 export const processLocaviaOpcionais = (file: File): Promise<LocaviaOpcionais[]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -36,7 +37,9 @@ export const processLocaviaOpcionais = (file: File): Promise<LocaviaOpcionais[]>
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        // importante: defval para não virar undefined
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
 
         const processedData: LocaviaOpcionais[] = (jsonData as any[]).map((row: any) => ({
           CodigoModelo: String(row['CodigoModelo'] || '').trim(),
@@ -76,6 +79,7 @@ export const processSalesForceOpcionais = (file: File): Promise<SalesForceOpcion
 
         const processedData: SalesForceOpcionais[] = (jsonData as any[]).map((row: any) => ({
           // ✅ Id do registro IRIS_Produto_Opcional__c
+          CreatedDate: String(row['CreatedDate'] || '').trim(),
           Id: String(row['Id'] || '').trim(),
 
           IRIS_Codigo_Modelo_Locavia_Integracao__c: String(
@@ -92,6 +96,8 @@ export const processSalesForceOpcionais = (file: File): Promise<SalesForceOpcion
 
           ProductCode_Modelo: String(row['IRIS_Dispositivo__r.ProductCode'] || row['ProductCode_Modelo'] || '').trim(),
           IRIS_Dispositivo_Id: String(row['IRIS_Dispositivo__r.Id'] || row['IRIS_Dispositivo_Id'] || '').trim(),
+
+          IRIS_AnodeFabricacao__c: String(row['IRIS_Dispositivo__r.IRIS_AnodeFabricacao__c'] || row['IRIS_AnodeFabricacao__c'] || '').trim(),
           IRIS_Anodomodelo__c: String(row['IRIS_Dispositivo__r.IRIS_Anodomodelo__c'] || row['IRIS_Anodomodelo__c'] || '').trim(),
 
           Name: String(row['IRIS_Opcional__r.Name'] || row['Name'] || '').trim(),

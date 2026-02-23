@@ -1,24 +1,29 @@
+// src/components/CoresComparison.tsx
 import { useState } from 'react';
+import * as XLSX from 'xlsx';
+import { AlertCircle, BarChart3, CheckCircle, Download } from 'lucide-react';
+
 import { FileUpload } from './FileUpload';
 import { InfoPanel } from './InfoPanel';
 import { QueryInfo } from './QueryInfo';
+
 import { processLocaviaCores, processSalesForceCores } from '../utils/coresProcessor';
 import { compareCores } from '../utils/coresComparison';
 import { processBaseIds, normalizeLookupKey } from '../utils/baseIdsProcessor';
 import { buildBaseLookups } from '../utils/baseIdsLookup';
 import { processProductOptions } from '../utils/productOptionProcessor';
-import { AlertCircle, CheckCircle, Download, BarChart3 } from 'lucide-react';
-import type { CoresComparisonResults, ProductOptionRecord } from '../types';
-import * as XLSX from 'xlsx';
 
-const CORES_QUERY = `SELECT Id, CreatedDate, IRIS_Dispositvo__r.Name, IRIS_Dispositvo__r.id, IRIS_Dispositvo__r.IRIS_Codigo_do_Modelo_do_Locavia__c, IRIS_Dispositvo__r.IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Cor__r.id, IRIS_Cor__r.name, IRIS_Cor__r.IRIS_Cor_ID__c, IRIS_Cor__r.ProductCode, IRIS_Valor__c, IRIS_Dispositvo__r.IRIS_Anodomodelo__c
+import type { CoresComparisonResults, ProductOptionRecord } from '../types';
+
+const CORES_QUERY = `SELECT Id, CreatedDate, IRIS_Dispositvo__r.Name, IRIS_Dispositvo__r.id, IRIS_Dispositvo__r.IRIS_Codigo_do_Modelo_do_Locavia__c, IRIS_Dispositvo__r.IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Cor__r.id, IRIS_Cor__r.name, IRIS_Cor__r.IRIS_Cor_ID__c, IRIS_Cor__r.ProductCode, IRIS_Valor__c, IRIS_Dispositvo__r.IRIS_Anodomodelo__c, IRIS_Dispositvo__r.IRIS_AnodeFabricacao__c 
 FROM IRIS_Produto_Cor__c
 ORDER BY CreatedDate DESC`;
 
 const BASE_IDS_QUERY = `SELECT Id, name, IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Codigo_Cor_Locavia__c,IRIS_Id_Locavia__c, IRIS_TipoRegistro__c, IRIS_NaoComercializado__c FROM Product2 where IRIS_TipoRegistro__c in ('IRIS_Cores','IRIS_Opicionais','IRIS_Dispositivo')`;
 
-const PRODUCT_OPTION_QUERY_PLACEHOLDER = `// TODO: você ainda não pegou a query
-// deixe aqui o SOQL quando tiver`;
+const PRODUCT_OPTION_QUERY_PLACEHOLDER = `SELECT Id, SBQQ__ConfiguredSKU__r.id, SBQQ__ConfiguredSKU__r.Name,SBQQ__ConfiguredSKU__r.ProductCode, SBQQ__OptionalSKU__r.IRIS_ProductFeature__c, SBQQ__OptionalSKU__r.Name, SBQQ__OptionalSKU__r.IRIS_Id_Locavia__c, SBQQ__OptionalSKU__r.id 
+FROM SBQQ__ProductOption__c 
+where SBQQ__OptionalSKU__r.IRIS_ProductFeature__c in ('Cores','Opcionais')`;
 
 type Props = {
   baseIdsFile: File | null;
@@ -30,6 +35,7 @@ const buildRemocaoProductOption = (
   feature: 'Cores' | 'Opcionais'
 ) => {
   const targetPairs = new Set<string>();
+
   semParNoLocaviaRows.forEach((r) => {
     const cod = normalizeLookupKey(r.CodigoModelo);
     const idRef = normalizeLookupKey(r.IdRef);
@@ -37,20 +43,21 @@ const buildRemocaoProductOption = (
   });
 
   return productOptions.filter((po) => {
-    const poFeature = (po.SBQQ__OptionalSKU__r_IRIS_ProductFeature__c || '').trim();
-    if (poFeature !== feature) return false;
+    const poFeature = normalizeLookupKey(po.SBQQ__OptionalSKU__r_IRIS_ProductFeature__c);
+    if (!poFeature) return false;
+
+    if (poFeature.toLowerCase() !== feature.toLowerCase()) return false;
 
     const cod = normalizeLookupKey(po.SBQQ__ConfiguredSKU__r_ProductCode);
     const idRef = normalizeLookupKey(po.SBQQ__OptionalSKU__r_IRIS_Id_Locavia__c);
-    return targetPairs.has(`${cod}__${idRef}`);
+
+    return !!cod && !!idRef && targetPairs.has(`${cod}__${idRef}`);
   });
 };
 
 export function CoresComparison({ baseIdsFile }: Props) {
   const [locaviaFile, setLocaviaFile] = useState<File | null>(null);
   const [salesForceFile, setSalesForceFile] = useState<File | null>(null);
-
-  // só Product Option aqui
   const [productOptionFile, setProductOptionFile] = useState<File | null>(null);
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -59,6 +66,21 @@ export function CoresComparison({ baseIdsFile }: Props) {
 
   const [productOptionsCache, setProductOptionsCache] = useState<ProductOptionRecord[] | null>(null);
   const [lookupsCache, setLookupsCache] = useState<ReturnType<typeof buildBaseLookups> | null>(null);
+
+  const year2 = (v: any) => {
+    const s = String(v ?? '').trim();
+    if (!s) return '';
+    return s.length >= 2 ? s.slice(-2) : s;
+  };
+
+  const buildBundleDisProductCode = (codigoIntegracao: any, anoFab: any, anoMod: any) => {
+    debugger;
+    const cod = normalizeLookupKey(codigoIntegracao);
+    const af = year2(anoFab);
+    const am = anoMod;
+    if (!cod || !af || !am) return '';
+    return `BNDL-DIS-${cod}-${af}-${am}`;
+  };
 
   const handleCompare = async () => {
     if (!locaviaFile || !salesForceFile || !baseIdsFile || !productOptionFile) {
@@ -114,7 +136,7 @@ export function CoresComparison({ baseIdsFile }: Props) {
         IRIS_Dispositvo__c: d.IRIS_Dispositvo_Id,
         IRIS_Ano_Modelo__c: d.AnoModelo,
         IRIS_Cor__c: d.IRIS_Cor__r_Id,
-        IRIS_Valor__c: d.Valor_Locavia, // valor do Locavia
+        IRIS_Valor__c: d.Valor_Locavia,
         IRIS_IdDispositivo_Cor__c: idDispositivoCor,
       };
     });
@@ -137,27 +159,39 @@ export function CoresComparison({ baseIdsFile }: Props) {
       };
     });
 
-    const semParLocaviaData = results.semParNoLocavia.map(r => ({
+    const semParLocaviaData = results.semParNoLocavia.map((r) => ({
       'Id (IRIS_Produto_Cor__c)': r.Id,
-      'CreatedDate': r.CreatedDate || '',
-      'Código Modelo': r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
+      CreatedDate: r.CreatedDate || '',
+      'Código Modelo (ProductCode)': r.ProductCode_Modelo || '',
+      'Código Modelo (Integração)': r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
+      'Ano Fabricação': r.IRIS_AnodeFabricacao__c || '',
       'Ano Modelo': r.IRIS_Anodomodelo__c,
       'Nome Cor': r.IRIS_Cor_Name,
       'ID Cor (raw)': r.IRIS_Cor_ID__c_raw || '',
       'ID Cor (normalizado)': r.IRIS_Cor_ID__c,
       'Cor Product2 Id': r.IRIS_Cor__r_Id,
-      'Valor': r.IRIS_Valor__c,
+      Valor: r.IRIS_Valor__c,
     }));
-
 
     const productOptions = productOptionsCache || [];
-    const semParNoLocaviaPairs = results.semParNoLocavia.map((r) => ({
-      CodigoModelo: r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
-      IdRef: r.IRIS_Cor_ID__c,
-    }));
+
+    // ✅ FIX: usar ProductCode_Modelo (bate com SBQQ__ConfiguredSKU__r.ProductCode)
+    const semParNoLocaviaPairs = results.semParNoLocavia
+      .map((r) => ({
+        CodigoModelo: buildBundleDisProductCode(
+          r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
+          r.IRIS_AnodeFabricacao__c,
+          r.IRIS_Anodomodelo__c
+        ),
+        IdRef: r.IRIS_Cor_ID__c,
+      }))
+      .filter((x) => x.CodigoModelo && x.IdRef);
 
     const remocaoPO = buildRemocaoProductOption(semParNoLocaviaPairs, productOptions, 'Cores');
+    debugger;
+
     const remocaoPOData = remocaoPO.map((r) => ({
+      Id: r.Id,
       'SBQQ__ConfiguredSKU__r.Name': r.SBQQ__ConfiguredSKU__r_Name,
       'SBQQ__ConfiguredSKU__r.ProductCode': r.SBQQ__ConfiguredSKU__r_ProductCode,
       'SBQQ__OptionalSKU__r.IRIS_ProductFeature__c': r.SBQQ__OptionalSKU__r_IRIS_ProductFeature__c,
@@ -184,7 +218,7 @@ export function CoresComparison({ baseIdsFile }: Props) {
             title: 'Dados Necessários',
             content: [
               'Planilha Locavia: CodigoModelo, AnoModelo, Name, IRIS_Cor_ID__c, IsActive, Preco_Publico__c, IRIS_Segmento_do_Produto__c',
-              'Planilha Salesforce: Id, IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Anodomodelo__c, IRIS_Cor__r.Id, IRIS_Cor_ID__c, IRIS_Cor_Name, IRIS_Valor__c',
+              'Planilha Salesforce: Id, CreatedDate, IRIS_Dispositvo__r.ProductCode, IRIS_Dispositvo__r.IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Dispositvo__r.IRIS_Anodomodelo__c, IRIS_Cor__r.Id, IRIS_Cor__r.IRIS_Cor_ID__c, IRIS_Valor__c',
               'Base de IDs (Product2): Id, IRIS_TipoRegistro__c, IRIS_Id_Locavia__c, IRIS_Codigo_Cor_Locavia__c, IRIS_NaoComercializado__c',
               'Product Option: SBQQ__ConfiguredSKU__r.ProductCode + SBQQ__OptionalSKU__r.IRIS_Id_Locavia__c',
               'Arquivos devem estar no formato Excel (.xlsx ou .xls)',
@@ -197,6 +231,7 @@ export function CoresComparison({ baseIdsFile }: Props) {
               'Na Base de IDs, só usar dispositivos com IRIS_NaoComercializado__c = false.',
               'Divergências SF inclui a coluna Id e usa valor do Locavia para atualização.',
               'Sem par no SF preenche IRIS_Dispositivo__c e IRIS_Cor__c via Base de IDs.',
+              'Sem par no Locavia (para remoção) mantém o mais velho e lista os mais novos (duplicados) para remover.',
               'Remoção Product Option é gerada com base em Sem par no Locavia.',
             ],
           },
@@ -210,7 +245,11 @@ export function CoresComparison({ baseIdsFile }: Props) {
       <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
         <div className="grid md:grid-cols-2 gap-8 mb-8">
           <FileUpload label="Planilha Locavia - Cores" onFileSelect={setLocaviaFile} selectedFile={locaviaFile} />
-          <FileUpload label="Planilha Salesforce - Cores" onFileSelect={setSalesForceFile} selectedFile={salesForceFile} />
+          <FileUpload
+            label="Planilha Salesforce - Cores"
+            onFileSelect={setSalesForceFile}
+            selectedFile={salesForceFile}
+          />
           <FileUpload label="Product Option" onFileSelect={setProductOptionFile} selectedFile={productOptionFile} />
         </div>
 
@@ -227,9 +266,11 @@ export function CoresComparison({ baseIdsFile }: Props) {
           className={`
             w-full py-4 rounded-lg font-semibold text-white
             transition-all duration-200 flex items-center justify-center space-x-2
-            ${!locaviaFile || !salesForceFile || !baseIdsFile || !productOptionFile || isProcessing
-              ? 'bg-gray-300 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98] shadow-md hover:shadow-lg'}
+            ${
+              !locaviaFile || !salesForceFile || !baseIdsFile || !productOptionFile || isProcessing
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98] shadow-md hover:shadow-lg'
+            }
           `}
         >
           {isProcessing ? (

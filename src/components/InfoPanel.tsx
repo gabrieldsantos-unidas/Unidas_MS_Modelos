@@ -1,3 +1,4 @@
+// src/components/InfoPanel.tsx
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Info } from 'lucide-react';
 
@@ -22,6 +23,7 @@ export function InfoPanel({ title, sections }: InfoPanelProps) {
           <Info className="w-5 h-5 text-blue-600" />
           <span className="font-medium text-blue-900">{title}</span>
         </div>
+
         {isExpanded ? (
           <ChevronUp className="w-5 h-5 text-blue-600" />
         ) : (
@@ -37,7 +39,7 @@ export function InfoPanel({ title, sections }: InfoPanelProps) {
               <ul className="space-y-2">
                 {section.content.map((item, itemIndex) => (
                   <li key={itemIndex} className="text-sm text-gray-700 flex items-start">
-                    <span className="inline-block w-1.5 h-1.5 bg-blue-600 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                    <span className="inline-block w-1.5 h-1.5 bg-blue-600 rounded-full mt-2 mr-3 flex-shrink-0" />
                     <span>{item}</span>
                   </li>
                 ))}

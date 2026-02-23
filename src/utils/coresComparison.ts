@@ -1,3 +1,4 @@
+// src/utils/coresComparison.ts
 import {
   LocaviaCores,
   SalesForceCores,
@@ -30,45 +31,70 @@ const getLastTwoDigitsOfYear = (year: string): string => {
   return yearStr.slice(-2);
 };
 
+const parseCreated = (created?: string): number => {
+  if (!created) return 0;
+  const t = Date.parse(created);
+  return Number.isNaN(t) ? 0 : t;
+};
+
 export const compareCores = (
   locavia: LocaviaCores[],
   salesforce: SalesForceCores[]
 ): CoresComparisonResults => {
   const divergencias: CoresDivergence[] = [];
   const semParNoSF: LocaviaCores[] = [];
+
   const semParNoLocavia: SalesForceCores[] = [];
 
-  // ✅ AGORA guarda LISTA por chave (não sobrescreve)
   const sfMap = new Map<string, SalesForceCores[]>();
-
   salesforce.forEach((sf) => {
     const anoModelo = getLastTwoDigitsOfYear(sf.IRIS_Anodomodelo__c);
     const key = `${sf.IRIS_Codigo_Modelo_Locavia_Integracao__c}_${anoModelo}_${sf.IRIS_Cor_ID__c}`;
-
     const list = sfMap.get(key) || [];
     list.push(sf);
     sfMap.set(key, list);
+  });
+
+  const locKeys = new Set<string>();
+  locavia.forEach((loc) => {
+    const anoModelo = getLastTwoDigitsOfYear(loc.AnoModelo);
+    const key = `${loc.CodigoModelo}_${anoModelo}_${loc.IRIS_Cor_ID__c}`;
+    locKeys.add(key);
   });
 
   locavia.forEach((loc) => {
     const anoModelo = getLastTwoDigitsOfYear(loc.AnoModelo);
     const key = `${loc.CodigoModelo}_${anoModelo}_${loc.IRIS_Cor_ID__c}`;
 
-    const list = sfMap.get(key);
+    const bucket = sfMap.get(key);
 
-    if (!list || list.length === 0) {
+    if (!bucket || bucket.length === 0) {
       semParNoSF.push(loc);
       return;
     }
 
-    // ✅ Consome 1 registro do SF para esse par
-    const sf = list.shift()!;
+    const locIdNorm = loc.IRIS_Cor_ID__c;
 
-    // se acabou a lista, remove a chave do map
-    if (list.length === 0) sfMap.delete(key);
-    else sfMap.set(key, list);
+    let bestIndex = 0;
+    let bestScore = -1;
 
-    // ✅ (1) nome case-insensitive
+    for (let i = 0; i < bucket.length; i++) {
+      const sf = bucket[i];
+      const createdScore = parseCreated(sf.CreatedDate);
+      const raw = (sf.IRIS_Cor_ID__c_raw || '').trim();
+      const rawPerfect = raw === locIdNorm;
+
+      const score = (rawPerfect ? 1_000_000_000_000 : 0) + createdScore;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = i;
+      }
+    }
+
+    const sf = bucket.splice(bestIndex, 1)[0];
+    if (bucket.length === 0) sfMap.delete(key);
+    else sfMap.set(key, bucket);
+
     const locName = (loc.Name || '').toLowerCase();
     const sfName = (sf.IRIS_Cor_Name || '').toLowerCase();
 
@@ -111,9 +137,16 @@ export const compareCores = (
     }
   });
 
-  // ✅ Tudo que sobrou no SF (inclusive duplicados) vira "Sem par no Locavia"
-  sfMap.forEach((list) => {
-    list.forEach((sf) => semParNoLocavia.push(sf));
+  sfMap.forEach((leftovers, key) => {
+    const hadLocaviaKey = locKeys.has(key);
+
+    if (!hadLocaviaKey) {
+      leftovers.forEach((sf) => semParNoLocavia.push(sf));
+      return;
+    }
+
+    leftovers.sort((a, b) => parseCreated(a.CreatedDate) - parseCreated(b.CreatedDate));
+    leftovers.slice(1).forEach((sf) => semParNoLocavia.push(sf));
   });
 
   return { divergencias, semParNoSF, semParNoLocavia };

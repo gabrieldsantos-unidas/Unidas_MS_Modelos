@@ -1,3 +1,4 @@
+// src/components/OpcionaisComparison.tsx
 import { useState } from 'react';
 import { FileUpload } from './FileUpload';
 import { InfoPanel } from './InfoPanel';
@@ -11,14 +12,15 @@ import { AlertCircle, CheckCircle, Download, BarChart3 } from 'lucide-react';
 import type { OpcionaisComparisonResults, ProductOptionRecord } from '../types';
 import * as XLSX from 'xlsx';
 
-const OPCIONAIS_QUERY = `SELECT Id, CreatedDate, IRIS_Dispositivo__r.Name, IRIS_Dispositivo__r.id, IRIS_Dispositivo__r.IRIS_Codigo_do_Modelo_do_Locavia__c, IRIS_Dispositivo__r.IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Opcional__r.name, IRIS_Opcional__r.id, IRIS_Opcional__r.ProductCode, IRIS_Opcional__r.IRIS_IdOpcionais__c, IRIS_Opcional__r.Preco_Publico__c, IRIS_Dispositivo__r.IRIS_Anodomodelo__c
+const OPCIONAIS_QUERY = `SELECT Id, CreatedDate, IRIS_Dispositivo__r.Name, IRIS_Dispositivo__r.id, IRIS_Dispositivo__r.IRIS_Codigo_do_Modelo_do_Locavia__c, IRIS_Dispositivo__r.IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Opcional__r.name, IRIS_Opcional__r.id, IRIS_Opcional__r.ProductCode, IRIS_Opcional__r.IRIS_IdOpcionais__c, IRIS_Opcional__r.Preco_Publico__c, IRIS_Dispositivo__r.IRIS_Anodomodelo__c, IRIS_Dispositivo__r.IRIS_Anodomodelo__c
 FROM IRIS_Produto_Opcional__c
 ORDER BY CreatedDate DESC`;
 
 const BASE_IDS_QUERY = `SELECT Id, name, IRIS_Codigo_Modelo_Locavia_Integracao__c, IRIS_Codigo_Cor_Locavia__c,IRIS_Id_Locavia__c, IRIS_TipoRegistro__c, IRIS_NaoComercializado__c FROM Product2 where IRIS_TipoRegistro__c in ('IRIS_Cores','IRIS_Opicionais','IRIS_Dispositivo')`;
 
-const PRODUCT_OPTION_QUERY_PLACEHOLDER = `// TODO: você ainda não pegou a query
-// deixe aqui o SOQL quando tiver`;
+const PRODUCT_OPTION_QUERY_PLACEHOLDER = `SELECT Id, SBQQ__ConfiguredSKU__r.id, SBQQ__ConfiguredSKU__r.Name,SBQQ__ConfiguredSKU__r.ProductCode, SBQQ__OptionalSKU__r.IRIS_ProductFeature__c, SBQQ__OptionalSKU__r.Name, SBQQ__OptionalSKU__r.IRIS_Id_Locavia__c, SBQQ__OptionalSKU__r.id 
+FROM SBQQ__ProductOption__c 
+where SBQQ__OptionalSKU__r.IRIS_ProductFeature__c in ('Cores','Opcionais')`;
 
 type Props = {
   baseIdsFile: File | null;
@@ -37,12 +39,14 @@ const buildRemocaoProductOption = (
   });
 
   return productOptions.filter((po) => {
-    const poFeature = (po.SBQQ__OptionalSKU__r_IRIS_ProductFeature__c || '').trim();
-    if (poFeature !== feature) return false;
+    const poFeature = normalizeLookupKey(po.SBQQ__OptionalSKU__r_IRIS_ProductFeature__c);
+    if (!poFeature) return false;
+
+    if (poFeature.toLowerCase() !== feature.toLowerCase()) return false;
 
     const cod = normalizeLookupKey(po.SBQQ__ConfiguredSKU__r_ProductCode);
     const idRef = normalizeLookupKey(po.SBQQ__OptionalSKU__r_IRIS_Id_Locavia__c);
-    return targetPairs.has(`${cod}__${idRef}`);
+    return !!cod && !!idRef && targetPairs.has(`${cod}__${idRef}`);
   });
 };
 
@@ -105,7 +109,6 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
       'Valor SF': d.Valor_SF,
     }));
 
-    // Divergências SF (OPCIONAIS) só para Preco_Publico__c
     const divergenciasSFData = results.divergencias
       .filter((d) => d.Campo_Locavia === 'Preco_Publico__c')
       .map((d) => {
@@ -117,7 +120,7 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
           IRIS_Ano_Modelo__c: d.AnoModelo,
           IRIS_Opcional__c: d.IRIS_Opcional__r_Id,
           IRIS_IdDispositivo_Opcional__c: idDispositivoOpcional,
-          Preco_Publico__c: d.Valor_Locavia, // preço do Locavia
+          Preco_Publico__c: d.Valor_Locavia,
         };
       });
 
@@ -140,9 +143,11 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
     });
 
     const semParLocaviaData = results.semParNoLocavia.map((r) => ({
-      'Id': r.Id,
-      'Código Modelo': r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
+      Id: r.Id,
+      'Código Modelo (ProductCode)': r.ProductCode_Modelo || '',
+      'Código Modelo (Integração)': r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
       'Ano Modelo': r.IRIS_Anodomodelo__c,
+      'Ano Fabricação': r.IRIS_AnodeFabricacao__c || '',
       Nome: r.Name,
       'ID Opcional': r.IRIS_IdOpcionais__c,
       Ativo: r.IsActive,
@@ -151,13 +156,21 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
     }));
 
     const productOptions = productOptionsCache || [];
-    const semParNoLocaviaPairs = results.semParNoLocavia.map((r) => ({
-      CodigoModelo: r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
-      IdRef: r.IRIS_IdOpcionais__c,
-    }));
+
+    const semParNoLocaviaPairs = results.semParNoLocavia
+      .map((r) => ({
+        CodigoModelo: buildBundleDisProductCode(
+          r.IRIS_Codigo_Modelo_Locavia_Integracao__c,
+          r.IRIS_AnodeFabricacao__c,
+          r.IRIS_Anodomodelo__c
+        ),
+        IdRef: r.IRIS_IdOpcionais__c,
+      }))
+      .filter((x) => x.CodigoModelo && x.IdRef);
 
     const remocaoPO = buildRemocaoProductOption(semParNoLocaviaPairs, productOptions, 'Opcionais');
     const remocaoPOData = remocaoPO.map((r) => ({
+      Id: r.Id,
       'SBQQ__ConfiguredSKU__r.Name': r.SBQQ__ConfiguredSKU__r_Name,
       'SBQQ__ConfiguredSKU__r.ProductCode': r.SBQQ__ConfiguredSKU__r_ProductCode,
       'SBQQ__OptionalSKU__r.IRIS_ProductFeature__c': r.SBQQ__OptionalSKU__r_IRIS_ProductFeature__c,
@@ -173,6 +186,21 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(remocaoPOData), 'Remoção Product Option');
 
     XLSX.writeFile(wb, 'comparacao_opcionais.xlsx');
+  };
+
+  const year2 = (v: any) => {
+    const s = String(v ?? '').trim();
+    if (!s) return '';
+    return s.length >= 2 ? s.slice(-2) : s;
+  };
+
+  const buildBundleDisProductCode = (codigoIntegracao: any, anoFab: any, anoMod: any) => {
+    debugger;
+    const cod = normalizeLookupKey(codigoIntegracao);
+    const af = year2(anoFab);
+    const am = anoMod;
+    if (!cod || !af || !am) return '';
+    return `BNDL-DIS-${cod}-${af}-${am}`;
   };
 
   return (
@@ -217,9 +245,11 @@ export function OpcionaisComparison({ baseIdsFile }: Props) {
           className={`
             w-full py-4 rounded-lg font-semibold text-white
             transition-all duration-200 flex items-center justify-center space-x-2
-            ${!locaviaFile || !salesForceFile || !baseIdsFile || !productOptionFile || isProcessing
-              ? 'bg-gray-300 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98] shadow-md hover:shadow-lg'}
+            ${
+              !locaviaFile || !salesForceFile || !baseIdsFile || !productOptionFile || isProcessing
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98] shadow-md hover:shadow-lg'
+            }
           `}
         >
           {isProcessing ? (

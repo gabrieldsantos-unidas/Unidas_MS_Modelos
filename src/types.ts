@@ -13,6 +13,7 @@ export interface BaseIdRecord {
 }
 
 export interface ProductOptionRecord {
+  Id: string; // ✅ ID do Product Option (SBQQ__ProductOption__c)
   SBQQ__ConfiguredSKU__r_Name: string;
   SBQQ__ConfiguredSKU__r_ProductCode: string;
   SBQQ__OptionalSKU__r_IRIS_ProductFeature__c: string;
@@ -96,6 +97,7 @@ export interface SalesForceOpcionais {
   ProductCode_Modelo: string;
   IRIS_Dispositivo_Id: string;
   IRIS_Anodomodelo__c: string;
+  IRIS_AnodeFabricacao__c: string;
   Name: string;
   IRIS_IdOpcionais__c: string;
   ProductCode_Opcional: string;
@@ -148,26 +150,28 @@ export interface LocaviaCores {
   IRIS_Segmento_do_Produto__c: string;
 }
 
-export interface SalesForceCores {
+export type SalesForceCores = {
   Id: string;
-  CreatedDate?: string; // ✅ novo (pra debug/visualização)
+  CreatedDate?: string;
 
   IRIS_Codigo_Modelo_Locavia_Integracao__c: string;
   IRIS_Codigo_do_Modelo_do_Locavia__c: string;
+
   ProductCode_Modelo: string;
   IRIS_Dispositvo_Id: string;
+
   IRIS_Anodomodelo__c: string;
+  IRIS_AnodeFabricacao__c: string;
 
   IRIS_Cor_Name: string;
-
-  IRIS_Cor_ID__c: string;        // ✅ normalizado (pra comparação)
-  IRIS_Cor_ID__c_raw?: string;   // ✅ novo (pra mostrar 63.0)
+  IRIS_Cor_ID__c_raw?: string;
+  IRIS_Cor_ID__c: string;
 
   ProductCode_Cor: string;
   IRIS_Cor__r_Id: string;
-  IRIS_Valor__c: number | null;
-}
 
+  IRIS_Valor__c: number | null;
+};
 
 export interface CoresDivergence {
   // NOVO: Id do registro SF para update

@@ -1,3 +1,4 @@
+// src/utils/productOptionProcessor.ts
 import * as XLSX from 'xlsx';
 import type { ProductOptionRecord } from '../types';
 import { normalizeLookupKey } from './baseIdsProcessor';
@@ -15,6 +16,7 @@ export const processProductOptions = (file: File): Promise<ProductOptionRecord[]
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
 
         const parsed: ProductOptionRecord[] = (jsonData as any[]).map((row) => ({
+          Id: String(row['Id'] || '').trim(),
           SBQQ__ConfiguredSKU__r_Name: String(row['SBQQ__ConfiguredSKU__r.Name'] || '').trim(),
           SBQQ__ConfiguredSKU__r_ProductCode: normalizeLookupKey(row['SBQQ__ConfiguredSKU__r.ProductCode']),
           SBQQ__OptionalSKU__r_IRIS_ProductFeature__c: String(row['SBQQ__OptionalSKU__r.IRIS_ProductFeature__c'] || '').trim(),
@@ -25,7 +27,10 @@ export const processProductOptions = (file: File): Promise<ProductOptionRecord[]
 
         resolve(
           parsed.filter(
-            (r) => r.SBQQ__ConfiguredSKU__r_ProductCode && r.SBQQ__OptionalSKU__r_IRIS_Id_Locavia__c && r.SBQQ__OptionalSKU__r_Id
+            (r) =>
+              r.Id &&
+              r.SBQQ__ConfiguredSKU__r_ProductCode &&
+              r.SBQQ__OptionalSKU__r_IRIS_Id_Locavia__c
           )
         );
       } catch (err) {
